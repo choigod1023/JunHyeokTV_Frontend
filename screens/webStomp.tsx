@@ -63,7 +63,7 @@ const App = () => {
     }
   };
   const gotoWebStreaming = () => {
-    navigation.navigate("webStreaming");
+    navigation.navigate("mainScreen");
   };
   return (
     <View>

@@ -1,245 +1,183 @@
 import { useRef, useEffect, useState } from "react";
 import {
   View,
-  TouchableOpacity,
-  StyleSheet,
   Platform,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
   ActivityIndicator,
-  Dimensions,
-  useWindowDimensions,
 } from "react-native";
 import { Video } from "expo-av";
 import Hls from "hls.js";
-import { FontAwesome } from "@expo/vector-icons";
-import * as ScreenOrientation from "expo-screen-orientation";
+import { AntDesign } from "@expo/vector-icons";
 
 const HLSPlayer: React.FC = () => {
   const videoRef = useRef<Video>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isFullScreen, setIsFullScreen] = useState(false);
-  const [isControlsVisible, setIsControlsVisible] = useState(true); // 버튼 가시성 상태
   const videoUrl = "http://choigod1023.p-e.kr:8880/hls/stream.m3u8";
-  const { width, height } = useWindowDimensions(); // 화면 크기 얻기
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isError, setIsError] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false); // ✅ 버퍼링 상태 추가
+  const [showControls, setShowControls] = useState(true);
 
-  const isPortrait = height >= width; // 세로 화면 여부 확인
+  useEffect(() => {
+    let timeout: NodeJS.Timeout;
+    if (showControls) {
+      timeout = setTimeout(() => setShowControls(false), 3000);
+    }
+    return () => clearTimeout(timeout);
+  }, [showControls]);
+
   useEffect(() => {
     if (Platform.OS === "web") {
       const videoElement = document.getElementById(
         "hls-video"
       ) as HTMLVideoElement;
       if (videoElement) {
-        setIsLoading(true);
         if (Hls.isSupported()) {
           const hls = new Hls();
           hls.loadSource(videoUrl);
           hls.attachMedia(videoElement);
-          hls.on(Hls.Events.MANIFEST_PARSED, () => {
-            setIsLoading(false);
+          hls.on(Hls.Events.ERROR, (_, data) => {
+            if (data.fatal) {
+              setIsError(true);
+              console.error("HLS Error:", data);
+            }
           });
+          hls.on(Hls.Events.BUFFER_STALLED, () => {
+            setIsBuffering(true);
+          });
+          hls.on(Hls.Events.BUFFER_APPENDED, () => {
+            setIsBuffering(false);
+          });
+          hls.startLoad();
         } else {
           videoElement.src = videoUrl;
-          videoElement.onloadeddata = () => setIsLoading(false);
         }
+      } else {
+        console.error("Video element not found on web.");
       }
-    } else {
-      videoRef.current?.playAsync();
-      setIsPlaying(true);
     }
   }, []);
 
-  useEffect(() => {
-    if (isControlsVisible) {
-      const timer = setTimeout(() => {
-        setIsControlsVisible(false);
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [isControlsVisible]);
-
-  const handleUserInteraction = () => {
-    setIsControlsVisible(true);
-  };
-
-  const togglePlayback = async () => {
-    handleUserInteraction();
-    if (Platform.OS === "web") {
-      const videoElement = document.getElementById(
-        "hls-video"
-      ) as HTMLVideoElement;
-      if (videoElement) {
-        if (videoElement.paused) {
-          videoElement.currentTime = videoElement.duration - 0.1;
-          videoElement.play();
-          setIsPlaying(true);
-        } else {
-          videoElement.pause();
-          setIsPlaying(false);
-        }
-      }
-    } else if (videoRef.current) {
+  const handlePlayPause = async () => {
+    if (videoRef.current) {
       if (isPlaying) {
         await videoRef.current.pauseAsync();
       } else {
-        await videoRef.current.stopAsync();
         await videoRef.current.playAsync();
-        await videoRef.current.setPositionAsync(
-          videoRef.current.duration - 0.1
-        );
       }
       setIsPlaying(!isPlaying);
+      setShowControls(true);
     }
   };
 
-  const toggleFullScreen = async () => {
-    handleUserInteraction();
-    if (Platform.OS === "web") {
-      const videoElement = document.getElementById(
-        "hls-video"
-      ) as HTMLVideoElement;
-      if (videoElement) {
-        if (!document.fullscreenElement) {
-          if (videoElement.requestFullscreen) {
-            videoElement.requestFullscreen();
-          } else if (videoElement.webkitRequestFullscreen) {
-            videoElement.webkitRequestFullscreen();
-          }
-        } else {
-          if (document.exitFullscreen) {
-            document.exitFullscreen();
-          } else if (document.webkitExitFullscreen) {
-            document.webkitExitFullscreen();
-          }
-        }
-      }
-    } else {
-      if (isFullScreen) {
-        await ScreenOrientation.lockAsync(
-          ScreenOrientation.OrientationLock.PORTRAIT_UP
-        );
-      } else {
-        await ScreenOrientation.lockAsync(
-          ScreenOrientation.OrientationLock.LANDSCAPE_LEFT
-        );
-      }
-      setIsFullScreen(!isFullScreen);
-    }
+  const handleTouch = () => {
+    setShowControls(true);
   };
 
   return (
-    <View
-      style={[styles.container, isFullScreen && styles.fullScreenContainer]}
-      onTouchStart={handleUserInteraction}
+    <TouchableOpacity
+      style={styles.container}
+      onPress={handleTouch}
+      activeOpacity={1}
     >
       {Platform.OS === "web" ? (
         <video
           id="hls-video"
-          controls
           style={styles.video}
           playsInline
-          onPlay={() => setIsPlaying(true)}
-          onPause={() => setIsPlaying(false)}
+          autoPlay
+          controls
         />
       ) : (
         <Video
           ref={videoRef}
-          source={{ uri: videoUrl, type: "m3u8" }}
+          source={{ uri: videoUrl }}
           style={styles.video}
-          resizeMode="contain"
-          shouldPlay={isPlaying}
           useNativeControls={false}
-          onLoadStart={() => setIsLoading(true)}
-          onLoad={() => setIsLoading(false)}
+          resizeMode="contain"
+          onError={() => setIsError(true)}
+          onLoad={() => console.log("Video loaded")}
+          onBuffer={({ isBuffering }) => setIsBuffering(isBuffering)} // ✅ 버퍼링 감지
         />
       )}
 
-      {isLoading && (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color="#fff" />
+      {showControls && (
+        <TouchableOpacity style={styles.playButton} onPress={handlePlayPause}>
+          <AntDesign
+            name={isPlaying ? "pausecircleo" : "playcircleo"}
+            size={50}
+            color="white"
+          />
+        </TouchableOpacity>
+      )}
+
+      {isError && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>
+            영상 재생 중 오류가 발생했습니다.
+          </Text>
         </View>
       )}
 
-      {isControlsVisible && (
-        <>
-          <TouchableOpacity
-            style={
-              isPortrait ? styles.playPortraitButton : styles.playPortraitButton
-            }
-            onPress={togglePlayback}
-          >
-            <FontAwesome
-              name={isPlaying ? "pause" : "play"}
-              size={30}
-              color="#fff"
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={
-              isPortrait
-                ? styles.fullScreenPortraitButton
-                : styles.fullScreenLandscapeButton
-            }
-            onPress={toggleFullScreen}
-          >
-            <FontAwesome
-              name={isFullScreen ? "compress" : "expand"}
-              size={30}
-              color="#fff"
-            />
-          </TouchableOpacity>
-        </>
+      {/* ✅ 버퍼링 화면 추가 */}
+      {isBuffering && (
+        <View style={styles.bufferingOverlay}>
+          <ActivityIndicator size="large" color="white" />
+          <Text style={styles.bufferingText}>버퍼링 중입니다...</Text>
+        </View>
       )}
-    </View>
+    </TouchableOpacity>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: "#000",
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#000",
-    position: "relative",
-  },
-  fullScreenContainer: {
-    width: Dimensions.get("window").width,
-    height: Dimensions.get("window").height,
+    width: "100%",
+    height: "50%",
   },
   video: {
     width: "100%",
-    height: "120%",
-    marginBottom: 20,
+    height: "100%",
   },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+  playButton: {
+    position: "absolute",
+    bottom: "45%",
+    alignSelf: "center",
+    borderWidth: 2,
+    borderColor: "white",
+    borderRadius: 50,
+    backgroundColor: "rgba(0, 0, 0, 0.06)",
+  },
+  errorContainer: {
+    position: "absolute",
+    bottom: "45%",
+    left: "40%",
+    alignSelf: "center",
+    transform: [{ translateX: -75 }, { translateY: -25 }],
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    padding: 10,
+    borderRadius: 5,
+  },
+  errorText: {
+    color: "#fff",
+    fontSize: 16,
+    textAlign: "center",
+  },
+  bufferingOverlay: {
+    ...StyleSheet.absoluteFillObject, // ✅ 전체 화면 덮기
+    backgroundColor: "rgba(0, 0, 0, 0.5)", // ✅ 흐리게 처리
     justifyContent: "center",
     alignItems: "center",
   },
-  playPortraitButton: {
-    position: "absolute",
-  },
-  playLandscpaeButton: {
-    position: "absolute",
-    top: 0,
-    right: 20,
-  },
-  fullScreenPortraitButton: {
-    position: "absolute",
-    top: 30,
-    right: 20,
-    padding: 15,
-    backgroundColor: "rgba(255, 255, 255, 0.3)",
-    borderRadius: 50,
-  },
-  fullScreenLandscapeButton: {
-    position: "absolute",
-    top: 0,
-    right: 20,
-    padding: 15,
-    backgroundColor: "rgba(255, 255, 255, 0.3)",
-    borderRadius: 50,
+  bufferingText: {
+    color: "#fff",
+    fontSize: 18,
+    marginTop: 10,
   },
 });
 

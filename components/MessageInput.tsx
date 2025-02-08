@@ -31,7 +31,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage }) => {
                 onChangeText={setMessage}
                 onSubmitEditing={handleEnterPress} // 엔터 입력 처리
                 returnKeyType="send" // iOS에서 엔터 버튼을 "보내기"로 표시
-                placeholderTextColor="white" // placeholder 색상 변경
+                placeholderTextColor="white" // placeholder 색상 
             />
             <Button title="보내기" onPress={handleSend} />
         </View>
